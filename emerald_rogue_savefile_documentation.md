@@ -125,7 +125,7 @@ field before applying it to a different build.
 | `0x0034` | Map-view tile data |
 | `0x0234` | Party count |
 | `0x0238` | Party Pokémon records |
-| `0x0490` | Money |
+| `0x0490` | Money (source profile; companion parser profile `0x04A8`) |
 | `0x0494` | Bag sort mode and capacity upgrades |
 | `0x0498` | PC item slots |
 | `0x0560` | Bag pockets (source profile) |
@@ -173,6 +173,82 @@ prints the hour, minute, and second fields as `H:MM:SS`.
 
 Offsets are always relative to the beginning of the logical block, not the
 beginning of a physical SRAM sector.
+
+### Live values vs. hub backup values
+
+Emerald Rogue keeps two sets of bag, money, and play-time data. The live values
+describe whatever the player is currently doing (the hub or an adventure). The
+hub backup values are a snapshot of the hub state, so the hub's bag and money
+remain readable while the save was written mid-adventure. Compared against a
+hub save and a mid-adventure save of the same file (companion parser profile):
+
+| Value | Live location | Hub backup location |
+|---|---|---|
+| Bag | SaveBlock1 `+0x578`, 450 slots, quantity XOR key | Storage stream `+0x7089`, 450 slots, **plain** quantity |
+| Money | SaveBlock1 `+0x4A8` (`uint32`), XOR full 32-bit key | Storage stream `+0x7899` (`uint32`), **plain** |
+| Play time | SaveBlock2 `+0x0E` (`uint16` hours, minutes, seconds, VBlanks) | Not found |
+
+Details:
+
+- The storage stream is the concatenation of the nine Pokémon Storage sectors
+  (IDs 5–13) for the chosen save counter, the same stream that holds the Rogue
+  save block at `+0x5DC4`.
+- Hub backup bag slots use the same four-byte layout as live slots (`uint16`
+  item ID, `uint16` quantity) but the quantity is not encrypted. Slot `i` is at
+  `0x7089 + 4 * i`; the array ends at `0x7791`.
+- Hub backup money is 4 bytes at `0x7899`, `0x108` bytes after the end of the
+  backup bag. It is unaligned.
+- The live money offset `+0x4A8` is the source profile's `0x490` shifted by
+  `0x18`, the same shift as the bag (`0x578` vs. `0x560`).
+- Live values are the hub values when the save was written in the hub. Mid
+  adventure they are the run's bag, money, and play time. Live play time then
+  counts the current adventure only, as `H:MM:SS`.
+- The backup is a snapshot taken when the adventure begins, so it excludes
+  later hub changes such as rewards earned on exit. It exists in hub saves too,
+  and then may not match the live values, so use it only when the save is known
+  to be mid-adventure.
+- No copy of the hub play time was found anywhere in the file. Neither the
+  `H:MM:SS` form, raw seconds/minutes, nor frame counts matched, plain or XORed
+  with either key.
+
+### Hub name and location
+
+- **Hub name:** SaveBlock2 `+0xEE4`, a Gen 3 text string terminated by `0xFF`
+  (up to 16 bytes observed). Main Save holds `End Town`; the test save holds
+  `TUA`. The companion shows it in "Trainer <name> is resting in <hub name>."
+- **Saved location:** SaveBlock1 `+0x04` holds the map group and map number
+  (one signed byte each). The companion currently treats map group `2` as the
+  hub. Findings so far indicate that group 2 appears to indicate the hub, but
+  more testing is required. Hub saves seen: group 2 with map numbers 3, 4, 5,
+  6, 8, and 13; the one mid-adventure save was at `(7, 0)`. Saves from other
+  adventure maps may also use group 2 and be misclassified.
+- **Map group 6 (adventure map):** map `(6, 0)` (layout 103) is confirmed as
+  the **Adventure Map**, the area between routes. The player position changes
+  within it as the run progresses. Other group 6 maps seen mid-run were
+  `(6, 32)` and `(6, 38)`; their purpose is not yet determined. Treat group 6
+  as a run location, not the hub.
+- **Map group 7 (routes/events):** maps seen in saves made inside a route or
+  event include `(7, 0)`, `(7, 3)`, `(7, 4)`, `(7, 12)`, and `(7, 23)`.
+- **Confirmed locations:**
+
+  | Map (group, num) | Layout | Location |
+  |---|---:|---|
+  | `(6, 0)` | 103 | Adventure Map (between routes) |
+  | `(7, 23)` | 70 | Gym |
+
+- The continue, dynamic, and escape warps (`+0x0C`, `+0x14`, `+0x1C`) pointed
+  to the hub in every save, including the adventure one, so they do not
+  indicate hub vs. adventure.
+
+Validation example (same file saved in the hub, then mid adventure):
+
+| Value | Hub save | Mid-adventure save |
+|---|---:|---:|
+| Live money | 86,440 | 149,840 |
+| Hub backup money | 82,440 | 82,440 |
+| Live play time | 302:36:35 | 1:41:06 |
+| Live bag | 86 distinct items | different run bag |
+| Hub backup bag | 86 items, same as its live bag | 86 items, identical to the hub save's live bag |
 
 ### Layout-profile differences
 

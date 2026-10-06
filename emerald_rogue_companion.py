@@ -32,6 +32,13 @@ BAG_ITEMS_OFFSET = 0x578
 BAG_ITEM_SLOT_COUNT = 450
 SAVEBLOCK2_PLAY_TIME_OFFSET = 0x0E
 SAVEBLOCK2_PLAYER_NAME_OFFSET = 0x00
+SAVEBLOCK1_MONEY_OFFSET = 0x4A8
+SAVEBLOCK1_LOCATION_OFFSET = 0x04
+SAVEBLOCK2_HUB_NAME_OFFSET = 0xEE4
+HUB_NAME_LENGTH = 16
+# Every hub save seen so far is in map group 2; needs more testing.
+HUB_MAP_GROUP = 2
+HUB_SNAPSHOT_MONEY_OFFSET = 0x7899
 PLAYER_NAME_LENGTH = 8
 
 # Rogue save and quest-state data in the v2.0.x EX Pokémon Storage stream.
@@ -560,6 +567,11 @@ def decode_trainer_name(saveblock2):
     if len(name_bytes) != PLAYER_NAME_LENGTH:
         raise ValueError("SaveBlock2 is too small to read the trainer name.")
 
+    return decode_game_text(name_bytes)
+
+
+def decode_game_text(name_bytes):
+    """Decode Gen 3 character bytes up to the 0xFF terminator."""
     decoded_characters = []
     special_characters = {
         0xAB: "!",
@@ -596,6 +608,33 @@ def decode_trainer_name(saveblock2):
             decoded_characters.append("?")
 
     return "".join(decoded_characters).strip() or "Unknown"
+
+
+def get_hub_name(block, saveblock2):
+    """Return the saved hub name if the saved location is a hub map, else None."""
+    map_group = struct.unpack_from("<b", block, SAVEBLOCK1_LOCATION_OFFSET)[0]
+    if map_group != HUB_MAP_GROUP:
+        return None
+
+    name_bytes = saveblock2[
+        SAVEBLOCK2_HUB_NAME_OFFSET:SAVEBLOCK2_HUB_NAME_OFFSET + HUB_NAME_LENGTH
+    ]
+    return decode_game_text(name_bytes)
+
+
+def read_money(block, encryption_key, storage):
+    """Return the hub snapshot money (bank) and live money (wallet)."""
+    if len(block) < SAVEBLOCK1_MONEY_OFFSET + 4:
+        raise ValueError("SaveBlock1 is too small to read money.")
+    if len(storage) < HUB_SNAPSHOT_MONEY_OFFSET + 4:
+        raise ValueError("Pokémon Storage data ends before the hub money snapshot.")
+
+    wallet = (
+        struct.unpack_from("<I", block, SAVEBLOCK1_MONEY_OFFSET)[0]
+        ^ encryption_key
+    )
+    bank = struct.unpack_from("<I", storage, HUB_SNAPSHOT_MONEY_OFFSET)[0]
+    return bank, wallet
 
 
 def print_save_info(saveblock2, storage):
@@ -1285,6 +1324,9 @@ def show_berry_plots(
     trainer_name,
     difficulty_name,
     play_time,
+    bank_money,
+    wallet_money,
+    hub_name,
 ):
     """Show the save dashboard with plots, stats, quests, bag, and Pokédex."""
     root = tk.Tk()
@@ -1733,16 +1775,26 @@ def show_berry_plots(
         pady=(0, 8),
         sticky="nsew",
     )
-    for row, (label, value) in enumerate(
-        (
-            ("Trainer", trainer_name),
-            ("Difficulty", difficulty_name),
-            ("Playtime", play_time),
-        )
-    ):
+    if hub_name is None:
+        trainer_line = f"Trainer {trainer_name} is on an adventure!"
+        play_time_label = "Adventuretime"
+    else:
+        trainer_line = f"Trainer {trainer_name} is resting in {hub_name}."
+        play_time_label = "Playtime"
+    stat_lines = [
+        trainer_line,
+        f"Difficulty: {difficulty_name}",
+        f"{play_time_label}: {play_time}",
+    ]
+    if hub_name is None:
+        stat_lines.append(f"Wallet: {wallet_money:,}₽")
+        stat_lines.append(f"Bank: {bank_money:,}₽")
+    else:
+        stat_lines.append(f"Bank: {wallet_money:,}₽")
+    for row, text in enumerate(stat_lines):
         tk.Label(
             stats_frame,
-            text=f"{label}: {value}",
+            text=text,
             background="#73C5A4",
             anchor="w",
         ).grid(row=row, column=0, columnspan=2, sticky="w")
@@ -1750,7 +1802,7 @@ def show_berry_plots(
     stats_frame.grid_columnconfigure(1, weight=1)
     for row, (generation, caught_count, total_count, representative_dex) in enumerate(
         get_generation_catch_counts(caught),
-        start=3,
+        start=len(stat_lines),
     ):
         icon = (
             status_icons["Shiny"]
@@ -2316,6 +2368,8 @@ def main():
             play_time,
         ) = print_save_info(saveblock2, storage)
         trainer_name = decode_trainer_name(saveblock2)
+        bank_money, wallet_money = read_money(block, encryption_key, storage)
+        hub_name = get_hub_name(block, saveblock2)
         quest_states = read_quest_states(storage)
         print_quest_progress(storage)
 
@@ -2372,6 +2426,9 @@ def main():
             trainer_name,
             difficulty_name,
             play_time,
+            bank_money,
+            wallet_money,
+            hub_name,
         )
 
     except Exception as e:
