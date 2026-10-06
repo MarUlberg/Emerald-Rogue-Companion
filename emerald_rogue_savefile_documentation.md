@@ -457,6 +457,47 @@ current bag contents only: each full set of 70 of an individual berry
 corresponds to 30 Pokéblocks of that berry's recipe. Future plot harvest is
 not included in the Pokéblock bonus.
 
+### Growth timing
+
+In v2.0.1a-EX, berry growth is driven by progress through an adventure, not by
+the real-time clock or play time. Every time the player enters a room from the
+adventure-path overview (route, rest stop, gym/boss, and so on), every planted
+tree's countdown is reduced by **120 minutes**. Hub trees and in-run trees
+share the same array, so they all advance together.
+
+- The `+0x02` countdown is refilled with the berry's stage length (see the
+  Growth Rate column) each time a stage completes; the berry-bearing stage is
+  four times that length.
+- A tree needs four stage changes to bear berries. Total minutes to ripen is
+  `4 × stage length` (Oran: 4 × 180 = 720 minutes, i.e. 6 room entries).
+- Wins, losses, forfeits, rival/gym results, difficulty and game mode have no
+  direct effect. Game mode only matters indirectly through how many rooms the
+  adventure path contains (the first Gauntlet path is longer than later ones).
+- Returning to the overview, starting a run and returning to the hub do not
+  grow berries.
+- Trees with `stop_growth` set do not advance.
+
+Observed in saves (hub trees at stage 1; Watmel/Durin stage length 1080 and
+Starf 1440): the countdown fell by exactly 120 per room entered, unchanged by
+defeating the gym or rival, and an unvisited ("skipped") map node did not
+count.
+
+| Rooms entered | Watmel / Durin | Starf |
+|---:|---:|---:|
+| 1 | 960 | 1320 |
+| 2 | 840 | 1200 |
+| 3 | 720 | 1080 |
+| 4 | 600 | 960 |
+| 5 | 480 | 840 |
+| 6 | 360 | 720 |
+| 7 | 240 | 600 |
+
+Source reference: `BerryTreeTimeUpdate(120)` in `Rogue_OnSetWarpData`
+(`rogue_controller.c`) of `lbsbezerra/pokeemerald-rogue-improved-graphics`.
+Pokabbie's older public `vanilla`/`expansion` branches instead call
+`BerryTreeTimeUpdate(600)` after each boss win, so this value is
+build-specific.
+
 ### Farming-plot ID distinction
 
 Berry-tree IDs are array indices, not plot labels. In the documented
@@ -482,76 +523,83 @@ recipe, sprite asset, and classification. Berry IDs and berry/item
 definitions are revision-specific; confirm them against the target build before
 using this table as a static definition for another release.
 
-| Item ID | Berry ID | Berry | Tooltip | Pokéblock | Sprite | Type | Unlock requirement |
-|---:|---:|---|---|---|---|---|---|
-| 525 | 1 | Cheri | Cures paralysis. | Electric | Cheri | Type |  |
-| 526 | 2 | Chesto | Cures sleep. | Psychic | Chesto | Type |  |
-| 527 | 3 | Pecha | Cures poison. | Poison | Pecha | Type |  |
-| 528 | 4 | Rawst | Cures a burn. | Fire | Rawst | Type |  |
-| 529 | 5 | Aspear | Cures freezing. | Ice | Aspear | Type |  |
-| 530 | 6 | Leppa | Restores 10 PP to a move when its PP reaches 0. | Flying | Leppa | Type |  |
-| 531 | 7 | Oran | Restores 10 HP when the holder's HP is low. | HP | Oran | Stat |  |
-| 532 | 8 | Persim | Cures confusion. | Normal | Persim | Type |  |
-| 533 | 9 | Lum | Cures any major status condition and confusion. | Normal | Lum | Type |  |
-| 534 | 10 | Sitrus | Restores 25% of the holder's max HP when HP is low. | HP | Sitrus | Stat |  |
-| 535 | 11 | Figy | Restores 1/3 HP when low. | Bug | Figy | Type |  |
-| 536 | 12 | Wiki | Restores 1/3 HP when low. | Rock | Wiki | Type |  |
-| 537 | 13 | Mago | Restores 1/3 HP when low. | Ground | Mago | Type |  |
-| 538 | 14 | Aguav | Restores 1/3 HP when low. | Ice | Aguav | Type |  |
-| 539 | 15 | Iapapa | Restores 1/3 HP when low. | Grass | Iapapa | Type |  |
-| 540 | 16 | Razz |  | Fire | Razz | Type |  |
-| 541 | 17 | Bluk |  | Water | Razz | Type |  |
-| 542 | 18 | Nanab |  | Flying | Mago | Type |  |
-| 543 | 19 | Wepear |  | Psychic | Wepear | Type |  |
-| 544 | 20 | Pinap |  | Electric | Iapapa | Type |  |
-| 545 | 21 | Pomeg | Lowers HP EVs by 10. | HP | Pomeg | Stat |  |
-| 546 | 22 | Kelpsy | Lowers Attack EVs by 10. | ATK | Kelpsy | Stat |  |
-| 547 | 23 | Qualot | Lowers Defense EVs by 10. | DEF | Wepear | Stat |  |
-| 548 | 24 | Hondew | Lowers Sp. Atk EVs by 10. | SP.ATK | Hondew | Stat |  |
-| 549 | 25 | Grepa | Lowers Sp. Def EVs by 10. | SP.DEF | Grepa | Stat |  |
-| 550 | 26 | Tamato | Lowers Speed EVs by 10. | SPEED | Tamato | Stat |  |
-| 551 | 27 | Cornn |  | Dark | Cornn | Type |  |
-| 552 | 28 | Magost |  | Steel | Pomeg | Type |  |
-| 553 | 29 | Rabuta |  | Fighting | Rabuta | Type |  |
-| 554 | 30 | Nomel |  | Ghost | Nomel | Type |  |
-| 555 | 31 | Spelon |  | Rock | Spelon | Type |  |
-| 556 | 32 | Pamtree |  | Dragon | Pamtre | Type |  |
-| 557 | 33 | Watmel |  | Bug | Rabuta | Type |  |
-| 558 | 34 | Durin |  | Grass | Durin | Type |  |
-| 559 | 35 | Belue |  | Water | Hondew | Type |  |
-| 560 | 36 | Chilan | Weakens a super-effective Normal-type attack. | Normal | Grepa | Type | Normal Master |
-| 561 | 37 | Occa | Weakens a super-effective Fire-type attack. | Fire | Occa | Type | Fire Master |
-| 562 | 38 | Passho | Weakens a super-effective Water-type attack. | Water | Cornn | Type | Water Master |
-| 563 | 39 | Wacan | Weakens a super-effective Electric-type attack. | Electric | Razz | Type | Electric Master |
-| 564 | 40 | Rindo | Weakens a super-effective Grass-type attack. | Grass | Tamato | Type | Grass Master |
-| 565 | 41 | Yache | Weakens a super-effective Ice-type attack. | Ice | Yache | Type | Ice Master |
-| 566 | 42 | Chople | Weakens a super-effective Fighting-type attack. | Fighting | Chople | Type | Fighting Master |
-| 567 | 43 | Kebia | Weakens a super-effective Poison-type attack. | Poison | Kebia | Type | Poison Master |
-| 568 | 44 | Shuca | Weakens a super-effective Ground-type attack. | Ground | Shuca | Type | Ground Master |
-| 569 | 45 | Coba | Weakens a super-effective Flying-type attack. | Flying | Rawst | Type | Flying Master |
-| 570 | 46 | Payapa | Weakens a super-effective Psychic-type attack. | Psychic | Payapa | Type | Psychic Master |
-| 571 | 47 | Tanga | Weakens a super-effective Bug-type attack. | Bug | Tanga | Type | Bug Master |
-| 572 | 48 | Charti | Weakens a super-effective Rock-type attack. | Rock | Lansat | Type | Rock Master |
-| 573 | 49 | Kasib | Weakens a super-effective Ghost-type attack. | Ghost | Kasib | Type | Ghost Master |
-| 574 | 50 | Haban | Weakens a super-effective Dragon-type attack. | Dragon | Haban | Type | Dragon Master |
-| 575 | 51 | Colbur | Weakens a super-effective Dark-type attack. | Dark | Colbur | Type | Dark Master |
-| 576 | 52 | Babiri | Weakens a super-effective Steel-type attack. | Steel | Liechi | Type | Steel Master |
-| 577 | 53 | Roseli | Weakens a super-effective Fairy-type attack. | Fairy | Roseli | Type | Fairy Master |
-| 578 | 54 | Liechi | Raises Attack by one stage when HP is low. | ATK | Liechi | Stat |  |
-| 579 | 55 | Ganlon | Raises Defense by one stage when HP is low. | DEF | Hondew | Stat |  |
-| 580 | 56 | Salac | Raises Speed by one stage when HP is low. | SPEED | Aguav | Stat |  |
-| 581 | 57 | Petaya | Raises Sp. Atk by one stage when HP is low. | SP.ATK | Pomeg | Stat |  |
-| 582 | 58 | Apicot | Raises Sp. Def by one stage when HP is low. | SP.DEF | Grepa | Stat |  |
-| 583 | 59 | Lansat | Raises critical-hit ratio when HP is low. | Ground | Lansat | Type |  |
-| 584 | 60 | Starf | Sharply raises one random stat when HP is low. | SHINY | Cornn | Shiny |  |
-| 585 | 61 | Enigma | Restores HP when the holder is hit by a super-effective attack. | — | Durin | — |  |
-| 586 | 62 | Micle | Raises accuracy of the holder's next move when HP is low. | HP | Micle | Stat |  |
-| 587 | 63 | Custap | Allows the holder to move first when HP is low. | SPEED | Custap | Stat |  |
-| 588 | 64 | Jaboca | Damages an attacker that hits the holder with a physical move. | ATK | Jaboca | Stat |  |
-| 589 | 65 | Rowap | Damages an attacker that hits the holder with a special move. | SP.ATK | Rowap | Stat |  |
-| 590 | 66 | Kee | Raises Defense when the holder is hit by a physical attack. | Fairy | Pecha | Type |  |
-| 591 | 67 | Maranga | Raises Sp. Def when the holder is hit by a special attack. | SP.DEF | Occa | Stat |  |
-| 599 | 75 | Enigma |  | — |  | — |  |
+| Item ID | Berry ID | Berry | Tooltip | Growth Rate (min/stage) | Pokéblock | Sprite | Type | Unlock requirement |
+|---:|---:|---|---|---:|---|---|---|---|
+| 525 | 1 | Cheri | Cures paralysis. | 180 | Electric | Cheri | Type |  |
+| 526 | 2 | Chesto | Cures sleep. | 180 | Psychic | Chesto | Type |  |
+| 527 | 3 | Pecha | Cures poison. | 180 | Poison | Pecha | Type |  |
+| 528 | 4 | Rawst | Cures a burn. | 180 | Fire | Rawst | Type |  |
+| 529 | 5 | Aspear | Cures freezing. | 180 | Ice | Aspear | Type |  |
+| 530 | 6 | Leppa | Restores 10 PP to a move when its PP reaches 0. | 240 | Flying | Leppa | Type |  |
+| 531 | 7 | Oran | Restores 10 HP when the holder's HP is low. | 180 | HP | Oran | Stat |  |
+| 532 | 8 | Persim | Cures confusion. | 180 | Normal | Persim | Type |  |
+| 533 | 9 | Lum | Cures any major status condition and confusion. | 720 | Normal | Lum | Type |  |
+| 534 | 10 | Sitrus | Restores 25% of the holder's max HP when HP is low. | 360 | HP | Sitrus | Stat |  |
+| 535 | 11 | Figy | Restores 1/3 HP when low. | 360 | Bug | Figy | Type |  |
+| 536 | 12 | Wiki | Restores 1/3 HP when low. | 360 | Rock | Wiki | Type |  |
+| 537 | 13 | Mago | Restores 1/3 HP when low. | 360 | Ground | Mago | Type |  |
+| 538 | 14 | Aguav | Restores 1/3 HP when low. | 360 | Ice | Aguav | Type |  |
+| 539 | 15 | Iapapa | Restores 1/3 HP when low. | 360 | Grass | Iapapa | Type |  |
+| 540 | 16 | Razz |  | 60 | Fire | Razz | Type |  |
+| 541 | 17 | Bluk |  | 60 | Water | Razz | Type |  |
+| 542 | 18 | Nanab |  | 60 | Flying | Mago | Type |  |
+| 543 | 19 | Wepear |  | 60 | Psychic | Wepear | Type |  |
+| 544 | 20 | Pinap |  | 60 | Electric | Iapapa | Type |  |
+| 545 | 21 | Pomeg | Lowers HP EVs by 10. | 180 | HP | Pomeg | Stat |  |
+| 546 | 22 | Kelpsy | Lowers Attack EVs by 10. | 180 | ATK | Kelpsy | Stat |  |
+| 547 | 23 | Qualot | Lowers Defense EVs by 10. | 180 | DEF | Wepear | Stat |  |
+| 548 | 24 | Hondew | Lowers Sp. Atk EVs by 10. | 180 | SP.ATK | Hondew | Stat |  |
+| 549 | 25 | Grepa | Lowers Sp. Def EVs by 10. | 180 | SP.DEF | Grepa | Stat |  |
+| 550 | 26 | Tamato | Lowers Speed EVs by 10. | 360 | SPEED | Tamato | Stat |  |
+| 551 | 27 | Cornn |  | 360 | Dark | Cornn | Type |  |
+| 552 | 28 | Magost |  | 360 | Steel | Pomeg | Type |  |
+| 553 | 29 | Rabuta |  | 360 | Fighting | Rabuta | Type |  |
+| 554 | 30 | Nomel |  | 360 | Ghost | Nomel | Type |  |
+| 555 | 31 | Spelon |  | 1080 | Rock | Spelon | Type |  |
+| 556 | 32 | Pamtree |  | 1080 | Dragon | Pamtre | Type |  |
+| 557 | 33 | Watmel |  | 1080 | Bug | Rabuta | Type |  |
+| 558 | 34 | Durin |  | 1080 | Grass | Durin | Type |  |
+| 559 | 35 | Belue |  | 1080 | Water | Hondew | Type |  |
+| 560 | 36 | Chilan | Weakens a super-effective Normal-type attack. | 1080 | Normal | Grepa | Type | Normal Master |
+| 561 | 37 | Occa | Weakens a super-effective Fire-type attack. | 1080 | Fire | Occa | Type | Fire Master |
+| 562 | 38 | Passho | Weakens a super-effective Water-type attack. | 1080 | Water | Cornn | Type | Water Master |
+| 563 | 39 | Wacan | Weakens a super-effective Electric-type attack. | 1080 | Electric | Razz | Type | Electric Master |
+| 564 | 40 | Rindo | Weakens a super-effective Grass-type attack. | 1080 | Grass | Tamato | Type | Grass Master |
+| 565 | 41 | Yache | Weakens a super-effective Ice-type attack. | 1080 | Ice | Yache | Type | Ice Master |
+| 566 | 42 | Chople | Weakens a super-effective Fighting-type attack. | 1080 | Fighting | Chople | Type | Fighting Master |
+| 567 | 43 | Kebia | Weakens a super-effective Poison-type attack. | 1080 | Poison | Kebia | Type | Poison Master |
+| 568 | 44 | Shuca | Weakens a super-effective Ground-type attack. | 1080 | Ground | Shuca | Type | Ground Master |
+| 569 | 45 | Coba | Weakens a super-effective Flying-type attack. | 1080 | Flying | Rawst | Type | Flying Master |
+| 570 | 46 | Payapa | Weakens a super-effective Psychic-type attack. | 1080 | Psychic | Payapa | Type | Psychic Master |
+| 571 | 47 | Tanga | Weakens a super-effective Bug-type attack. | 1080 | Bug | Tanga | Type | Bug Master |
+| 572 | 48 | Charti | Weakens a super-effective Rock-type attack. | 1080 | Rock | Lansat | Type | Rock Master |
+| 573 | 49 | Kasib | Weakens a super-effective Ghost-type attack. | 1080 | Ghost | Kasib | Type | Ghost Master |
+| 574 | 50 | Haban | Weakens a super-effective Dragon-type attack. | 1080 | Dragon | Haban | Type | Dragon Master |
+| 575 | 51 | Colbur | Weakens a super-effective Dark-type attack. | 1080 | Dark | Colbur | Type | Dark Master |
+| 576 | 52 | Babiri | Weakens a super-effective Steel-type attack. | 1080 | Steel | Liechi | Type | Steel Master |
+| 577 | 53 | Roseli | Weakens a super-effective Fairy-type attack. | 1080 | Fairy | Roseli | Type | Fairy Master |
+| 578 | 54 | Liechi | Raises Attack by one stage when HP is low. | 1440 | ATK | Liechi | Stat |  |
+| 579 | 55 | Ganlon | Raises Defense by one stage when HP is low. | 1440 | DEF | Hondew | Stat |  |
+| 580 | 56 | Salac | Raises Speed by one stage when HP is low. | 1440 | SPEED | Aguav | Stat |  |
+| 581 | 57 | Petaya | Raises Sp. Atk by one stage when HP is low. | 1440 | SP.ATK | Pomeg | Stat |  |
+| 582 | 58 | Apicot | Raises Sp. Def by one stage when HP is low. | 1440 | SP.DEF | Grepa | Stat |  |
+| 583 | 59 | Lansat | Raises critical-hit ratio when HP is low. | 1440 | Ground | Lansat | Type |  |
+| 584 | 60 | Starf | Sharply raises one random stat when HP is low. | 1440 | SHINY | Cornn | Shiny |  |
+| 585 | 61 | Enigma | Restores HP when the holder is hit by a super-effective attack. | 1440 | — | Durin | — |  |
+| 586 | 62 | Micle | Raises accuracy of the holder's next move when HP is low. | 1440 | HP | Micle | Stat |  |
+| 587 | 63 | Custap | Allows the holder to move first when HP is low. | 1440 | SPEED | Custap | Stat |  |
+| 588 | 64 | Jaboca | Damages an attacker that hits the holder with a physical move. | 1440 | ATK | Jaboca | Stat |  |
+| 589 | 65 | Rowap | Damages an attacker that hits the holder with a special move. | 1440 | SP.ATK | Rowap | Stat |  |
+| 590 | 66 | Kee | Raises Defense when the holder is hit by a physical attack. | 1440 | Fairy | Pecha | Type |  |
+| 591 | 67 | Maranga | Raises Sp. Def when the holder is hit by a special attack. | 1440 | SP.DEF | Occa | Stat |  |
+| 599 | 75 | Enigma |  |  | — |  | — |  |
+
+Growth Rate is the minutes per growth stage (`stageDuration × 60`), taken from
+the `berry.c` table of the v2.0.1a EX source fork
+(`lbsbezerra/pokeemerald-rogue-improved-graphics`); it is the value the tree's
+`+0x02` countdown is reset to at each stage (the berry-bearing stage is four
+times longer). Growth advances 120 minutes per room entered; see "Growth
+timing" above. The blank duplicate Enigma row (ID 75) has no confirmed value.
 
 This is a source-derived reference table, not an absolute definition for every
 release. Older data sets may include legacy rows or duplicate entries; treat

@@ -833,6 +833,21 @@ BERRY_PLOT_TREE_IDS = (
     (87, 88, 89, 90, 91),
     (82, 83, 84, 85, 86),
 )
+BERRY_STAGE_HOURS = {
+    1: (16, 17, 18, 19, 20),
+    3: (1, 2, 3, 4, 5, 7, 8, 21, 22, 23, 24, 25),
+    4: (6,),
+    6: (10, 11, 12, 13, 14, 15, 26, 27, 28, 29, 30),
+    12: (9,),
+    18: tuple(range(31, 54)),
+    24: tuple(range(54, 68)),
+}
+BERRY_STAGE_MINUTES = {
+    berry_type: hours * 60
+    for hours, berry_types in BERRY_STAGE_HOURS.items()
+    for berry_type in berry_types
+}
+ROOM_GROWTH_MINUTES = 120
 BERRY_TREE_STAGES = {
     1: "Planted",
     2: "Sprouted",
@@ -1015,6 +1030,32 @@ def read_berry_plots(block):
         plots.append(plot)
 
     return plots
+
+
+def get_rooms_until_harvest(plots):
+    """Return rooms to enter until every growing tree bears berries, or None."""
+    rooms_needed = 0
+    found_growing = False
+
+    for plot in plots:
+        for tree in plot:
+            stage = tree["stage"]
+            if not tree["valid"] or stage == 0 or stage >= 5:
+                continue
+            stage_minutes = BERRY_STAGE_MINUTES.get(tree["berry_type"])
+            if stage_minutes is None or tree["stop_growth"]:
+                continue
+
+            remaining = (
+                tree["minutes_until_next_stage"]
+                + (4 - stage) * stage_minutes
+            )
+            found_growing = True
+            rooms_needed = max(
+                rooms_needed, -(-remaining // ROOM_GROWTH_MINUTES)
+            )
+
+    return rooms_needed if found_growing else None
 
 
 def get_berry_harvest(plots):
@@ -1628,15 +1669,16 @@ def show_berry_plots(
                 canvas.create_text(8, 16, text="?", fill="white")
             bind_tree_tooltip(canvas, tooltip_text)
 
+    berry_suffix = " Berry" if len(harvest) <= 3 else ""
     harvest_text = " - ".join(
-        f"{berry} Berry x{quantity}"
+        f"{berry}{berry_suffix} x{quantity}"
         for berry, quantity in sorted(harvest.items())
     )
     if not harvest_text:
         harvest_text = "None"
     tk.Label(
         plots_frame,
-        text=f"Harvest: {harvest_text}",
+        text=harvest_text,
         background="#73C5A4",
         anchor="w",
         justify="left",
@@ -1649,6 +1691,33 @@ def show_berry_plots(
         column=0,
         columnspan=2,
     )
+
+    rooms_left = get_rooms_until_harvest(plots)
+    if rooms_left is None:
+        ready_text = ""
+    elif rooms_left == 0:
+        ready_text = "All berries ready to harvest"
+    else:
+        ready_text = (
+            f"All berries ready to harvest in {rooms_left} "
+            f"{'stage' if rooms_left == 1 else 'stages'}"
+        )
+    if ready_text:
+        tk.Label(
+            plots_frame,
+            text=ready_text,
+            background="#73C5A4",
+            anchor="w",
+            justify="left",
+            wraplength=250,
+        ).grid(
+            padx=(28, 4),
+            pady=(4, 6),
+            sticky="nw",
+            row=1,
+            column=2,
+            columnspan=2,
+        )
 
     stats_frame = tk.LabelFrame(
         root,
