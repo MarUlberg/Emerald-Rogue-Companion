@@ -228,13 +228,18 @@ Details:
   `(6, 32)` and `(6, 38)`; their purpose is not yet determined. Treat group 6
   as a run location, not the hub.
 - **Map group 7 (routes/events):** maps seen in saves made inside a route or
-  event include `(7, 0)`, `(7, 3)`, `(7, 4)`, `(7, 12)`, and `(7, 23)`.
+  event include `(7, 0)`, `(7, 3)`, `(7, 4)`, `(7, 12)`, `(7, 23)`, and the
+  Elite Four maps `(7, 27)`, `(7, 28)`, and `(7, 29)`.
 - **Confirmed locations:**
 
   | Map (group, num) | Layout | Location |
   |---|---:|---|
   | `(6, 0)` | 103 | Adventure Map (between routes) |
   | `(7, 23)` | 70 | Gym |
+  | `(7, 27)` | 75 | Elite 4 Spiketrap |
+  | `(7, 28)` | 76 | Elite 4 Champion |
+  | `(7, 29)` | 77 | Final Battle |
+
 
 - The continue, dynamic, and escape warps (`+0x0C`, `+0x14`, `+0x1C`) pointed
   to the hub in every save, including the adventure one, so they do not

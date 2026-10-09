@@ -8,7 +8,7 @@ Contact: MarUlberg@gmail.com
 License: MIT License
 Description:
     Inspect Pokémon Emerald Rogue save data and report save info, quest
-    completion, Pokédex status, berry-plot growth, and berry/Pokéblock data.
+    completion, Pokédex status, berry-plot growth, and berry/PoKéBlock data.
 """
 
 import sys
@@ -39,6 +39,7 @@ HUB_NAME_LENGTH = 16
 # Every hub save seen so far is in map group 2; needs more testing.
 HUB_MAP_GROUP = 2
 HUB_SNAPSHOT_MONEY_OFFSET = 0x7899
+HUB_SNAPSHOT_BAG_OFFSET = 0x7089
 PLAYER_NAME_LENGTH = 8
 
 # Rogue save and quest-state data in the v2.0.x EX Pokémon Storage stream.
@@ -896,7 +897,7 @@ BERRY_TREE_STAGES = {
     255: "Sparkling",
 }
 
-#	Berry	Tooltip	Pokéblock	Sprite
+#	Berry	Tooltip	PoKéBlock	Sprite
 BERRY_ITEMS = {
     525: ("Cheri", "Cures paralysis.", "Electric", "Cheri"),
     526: ("Chesto", "Cures sleep.", "Psychic", "Chesto"),
@@ -982,6 +983,31 @@ POKEBLOCK_ITEMS = {
     852: "Rock", 854: "Ghost", 862: "Dragon", 863: "Dark",
     855: "Steel", 864: "Fairy",
 }
+POKEMON_TYPES = (
+    "Normal",
+    "Fire",
+    "Water",
+    "Electric",
+    "Grass",
+    "Ice",
+    "Fighting",
+    "Poison",
+    "Ground",
+    "Flying",
+    "Psychic",
+    "Bug",
+    "Rock",
+    "Ghost",
+    "Dragon",
+    "Dark",
+    "Steel",
+    "Fairy",
+)
+TYPE_SPRITE_WIDTH = 48
+TYPE_SPRITE_HEIGHT = 18
+POKEBLOCK_STAT_NAMES = ("SHINY", "HP", "ATK", "DEF", "SP.ATK", "SP.DEF", "SPEED")
+STAT_SPRITE_WIDTH = 48
+STAT_SPRITE_HEIGHT = 18
 
 
 def decode_bag(block, encryption_key):
@@ -997,6 +1023,23 @@ def decode_bag(block, encryption_key):
 
         quantity = encrypted_quantity ^ (encryption_key & 0xFFFF)
         decoded[item_id] = decoded.get(item_id, 0) + quantity
+
+    return decoded
+
+
+def decode_snapshot_bag(storage):
+    """Decode the hub bag snapshot (plain quantities) from the storage stream."""
+    end = HUB_SNAPSHOT_BAG_OFFSET + BAG_ITEM_SLOT_COUNT * 4
+    if len(storage) < end:
+        raise ValueError("Pokémon Storage data ends before the hub bag snapshot.")
+
+    decoded = {}
+    for i in range(BAG_ITEM_SLOT_COUNT):
+        item_id, quantity = struct.unpack_from(
+            "<HH", storage, HUB_SNAPSHOT_BAG_OFFSET + i * 4
+        )
+        if item_id:
+            decoded[item_id] = decoded.get(item_id, 0) + quantity
 
     return decoded
 
@@ -1109,7 +1152,7 @@ def get_berry_harvest(plots):
 
 
 def get_pokeblock_gains(bag):
-    """Return Pokéblock quantities available from the berries currently held."""
+    """Return PoKéBlock quantities available from the berries currently held."""
     gains = {}
     for item_id, berry_data in BERRY_ITEMS.items():
         current = bag.get(item_id, 0)
@@ -1171,7 +1214,7 @@ def print_berry_and_pokeblock_info(bag, plots, harvest):
 
     gains = get_pokeblock_gains(bag)
 
-    print("\nPokéblocks")
+    print("\nPoKéBlocks")
     print("-" * 60)
     print(f"{'Type':<12} {'In bag':>10} {'From bag berries':>20}")
     print(f"{'-' * 12} {'-' * 10} {'-' * 20}")
@@ -1315,7 +1358,7 @@ def bind_canvas_tooltip(canvas, item_id, text):
 
 def show_berry_plots(
     plots,
-    bag,
+    live_bag,
     harvest,
     seen,
     caught,
@@ -1327,6 +1370,7 @@ def show_berry_plots(
     bank_money,
     wallet_money,
     hub_name,
+    snapshot_bag,
 ):
     """Show the save dashboard with plots, stats, quests, bag, and Pokédex."""
     root = tk.Tk()
@@ -1433,6 +1477,49 @@ def show_berry_plots(
 
     dex_entries = []
     sprite_directory = Path(__file__).resolve().parent / "Sprites"
+    panels_sheet = tk.PhotoImage(file=str(sprite_directory / "Panels.png"))
+    panel_count = len(POKEBLOCK_STAT_NAMES) + len(POKEMON_TYPES)
+    if (
+        panels_sheet.width() != TYPE_SPRITE_WIDTH
+        or panels_sheet.height()
+        != STAT_SPRITE_HEIGHT * len(POKEBLOCK_STAT_NAMES)
+        + TYPE_SPRITE_HEIGHT * len(POKEMON_TYPES)
+    ):
+        raise ValueError(
+            f"Panels.png must be a vertical sheet of {panel_count} "
+            "48x18 panels, with Pokéblock stat icons before Pokémon type icons."
+        )
+    type_icons = {}
+    stat_icons = {}
+
+    def get_type_icon(type_name):
+        """Return the cached icon for a Pokémon type."""
+        if type_name not in POKEMON_TYPES:
+            raise ValueError(f"Unknown Pokémon type {type_name!r}.")
+        if type_name not in type_icons:
+            type_icons[type_name] = crop_sprite_sheet(
+                panels_sheet,
+                len(POKEBLOCK_STAT_NAMES) + POKEMON_TYPES.index(type_name),
+                TYPE_SPRITE_WIDTH,
+                TYPE_SPRITE_HEIGHT,
+                1,
+            )
+        return type_icons[type_name]
+
+    def get_stat_icon(stat_name):
+        """Return the cached icon for a Pokéblock stat."""
+        if stat_name not in POKEBLOCK_STAT_NAMES:
+            raise ValueError(f"Unknown Pokéblock stat {stat_name!r}.")
+        if stat_name not in stat_icons:
+            stat_icons[stat_name] = crop_sprite_sheet(
+                panels_sheet,
+                POKEBLOCK_STAT_NAMES.index(stat_name),
+                STAT_SPRITE_WIDTH,
+                STAT_SPRITE_HEIGHT,
+                1,
+            )
+        return stat_icons[stat_name]
+
     pokemon_sheets = {}
     pokemon_icons = {}
 
@@ -1672,7 +1759,7 @@ def show_berry_plots(
             canvas = tk.Canvas(
                 plot_frame,
                 width=16,
-                height=32,
+                height=30,
                 background="#73C5A4",
                 highlightthickness=0,
                 borderwidth=0,
@@ -1755,7 +1842,7 @@ def show_berry_plots(
         ).grid(
             padx=(28, 4),
             pady=(4, 6),
-            sticky="nw",
+            sticky="sw",
             row=1,
             column=2,
             columnspan=2,
@@ -1798,11 +1885,13 @@ def show_berry_plots(
             background="#73C5A4",
             anchor="w",
         ).grid(row=row, column=0, columnspan=2, sticky="w")
+    dex_rows_start = len(stat_lines) + 1
+    stats_frame.grid_rowconfigure(len(stat_lines), weight=1)
     stats_frame.grid_columnconfigure(0, weight=0, minsize=36)
     stats_frame.grid_columnconfigure(1, weight=1)
     for row, (generation, caught_count, total_count, representative_dex) in enumerate(
         get_generation_catch_counts(caught),
-        start=len(stat_lines),
+        start=dex_rows_start,
     ):
         icon = (
             status_icons["Shiny"]
@@ -1851,7 +1940,18 @@ def show_berry_plots(
         sticky="nsew",
     )
     bag_frame.grid_columnconfigure(0, weight=1)
-    bag_frame.grid_rowconfigure(0, weight=1)
+    bag_frame.grid_rowconfigure(1, weight=1)
+    show_adventure_bag = tk.BooleanVar(master=root, value=False)
+    if hub_name is None:
+        tk.Checkbutton(
+            bag_frame,
+            text="Show Adventure Bag",
+            variable=show_adventure_bag,
+            command=lambda: render_bag(),
+            background="#73C5A4",
+            activebackground="#73C5A4",
+            anchor="w",
+        ).grid(row=0, column=0, columnspan=2, sticky="w")
     bag_canvas = tk.Canvas(
         bag_frame,
         width=200,
@@ -1867,8 +1967,8 @@ def show_berry_plots(
         command=bag_canvas.yview,
     )
     bag_canvas.configure(yscrollcommand=bag_scrollbar.set)
-    bag_canvas.grid(row=0, column=0, sticky="nsew")
-    bag_scrollbar.grid(row=0, column=1, sticky="ns")
+    bag_canvas.grid(row=1, column=0, sticky="nsew")
+    bag_scrollbar.grid(row=1, column=1, sticky="ns")
     bag_contents = tk.Frame(bag_canvas, background="#73C5A4")
     bag_contents_window = bag_canvas.create_window(
         (0, 0),
@@ -1876,6 +1976,8 @@ def show_berry_plots(
         anchor="nw",
     )
     bag_row_labels = []
+    bag_quantity_labels = []
+    bag_section_labels = []
 
     def update_bag_scroll_region(event):
         if event.widget is bag_contents:
@@ -1884,7 +1986,12 @@ def show_berry_plots(
     def resize_bag_contents(event):
         bag_canvas.itemconfigure(bag_contents_window, width=event.width)
         for row_label in bag_row_labels:
-            row_label.configure(wraplength=max(100, event.width - 8))
+            row_label.place_configure(width=max(100, event.width - 60))
+            row_label.configure(wraplength=max(100, event.width - 60))
+        for quantity_label in bag_quantity_labels:
+            quantity_label.place_configure(relx=1.0, x=-4)
+        for section_label in bag_section_labels:
+            section_label.place_configure(width=max(100, event.width - 8))
 
     def scroll_bag(event):
         bag_canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
@@ -1901,20 +2008,26 @@ def show_berry_plots(
             return f"{names[0]} or {names[1]}"
         return f"{', '.join(names[:-1])} or {names[-1]}"
 
-    bag_row = 0
-    bag_contents.grid_columnconfigure(0, weight=1)
-    bag_contents.grid_columnconfigure(1, weight=0)
+    bag_item_row_height = 21
+    bag_section_row_height = bag_item_row_height + 4
+    bag_y = 0
 
-    def add_bag_row(name_text, quantity_text, tooltip_text):
+    def add_bag_row(name_text, quantity_text, tooltip_text, name_icon=None):
         """Add an item name and a separate right-aligned quantity."""
         name_label = tk.Label(
             bag_contents,
             text=name_text,
+            image=name_icon,
+            compound="left",
             background="#73C5A4",
             anchor="w",
             justify="left",
         )
-        name_label.grid(row=bag_row, column=0, sticky="ew", padx=(2, 0))
+        name_label.place(
+            x=2,
+            y=bag_y,
+            width=max(100, bag_contents.winfo_width() - 60),
+        )
         quantity_label = tk.Label(
             bag_contents,
             text=quantity_text,
@@ -1922,80 +2035,107 @@ def show_berry_plots(
             anchor="e",
             justify="right",
         )
-        quantity_label.grid(row=bag_row, column=1, sticky="e", padx=(2, 4))
+        quantity_label.place(relx=1.0, x=-4, y=bag_y, anchor="ne")
         bag_row_labels.append(name_label)
+        bag_quantity_labels.append(quantity_label)
         for label in (name_label, quantity_label):
             bind_tree_tooltip(label, tooltip_text)
             label.bind("<MouseWheel>", scroll_bag)
 
-    for section_name in ("Pokéblocks", "Berries"):
-        section_label = tk.Label(
-            bag_contents,
-            text=section_name,
-            font=("TkDefaultFont", 9, "bold"),
-            background="#73C5A4",
-            anchor="w",
-        )
-        section_label.grid(
-            row=bag_row,
-            column=0,
-            columnspan=2,
-            sticky="ew",
-            padx=2,
-            pady=(3, 1),
-        )
-        section_label.bind("<MouseWheel>", scroll_bag)
-        bag_row += 1
-        if section_name == "Pokéblocks":
-            block_gains = get_pokeblock_gains(bag)
-            block_quantities = {
-                block_type: bag.get(item_id, 0)
-                for item_id, block_type in POKEBLOCK_ITEMS.items()
-            }
-            for block_type in POKEBLOCK_ITEMS.values():
-                quantity = block_quantities[block_type]
-                block_gain = block_gains.get(block_type, 0)
-                sources = [
-                    berry_data[0]
-                    for berry_data in BERRY_ITEMS.values()
-                    if berry_data[2].replace(".", "") == block_type
-                ]
-                tooltip_text = (
-                    f"(Made from {source_list_text(sources)} Berry)"
-                    if sources
-                    else None
-                )
-                add_bag_row(
-                    f"{block_type} Pokéblock",
-                    f"{f'(+{block_gain})  ' if block_gain else ''}x{quantity}",
-                    tooltip_text,
-                )
-                bag_row += 1
-        else:
-            for item_id, berry_data in BERRY_ITEMS.items():
-                berry, description, block_type, _ = berry_data
-                quantity = bag.get(item_id, 0)
-                projected_harvest = harvest.get(berry, 0)
-                if quantity == 0 and projected_harvest == 0:
-                    continue
-                tooltip_text = description
-                if block_type != "—":
-                    normalized_block_type = block_type.replace(".", "")
-                    create_text = f"Creates {normalized_block_type} Pokéblock"
+    def render_bag():
+        nonlocal bag_y
+        for widget in bag_contents.winfo_children():
+            widget.destroy()
+        bag_row_labels.clear()
+        bag_quantity_labels.clear()
+        bag_section_labels.clear()
+        bag_y = 0
+        bag = live_bag if (hub_name is not None or show_adventure_bag.get()) else snapshot_bag
+        adventure_view = hub_name is None and show_adventure_bag.get()
+        sections = ("Berries",) if adventure_view else ("PoKéBlocks", "Berries")
+        for section_name in sections:
+            section_label = tk.Label(
+                bag_contents,
+                text=section_name,
+                font=("TkDefaultFont", 9, "bold"),
+                background="#73C5A4",
+                anchor="w",
+            )
+            section_label.place(
+                x=2,
+                y=bag_y,
+                width=max(100, bag_contents.winfo_width() - 8),
+            )
+            bag_section_labels.append(section_label)
+            section_label.bind("<MouseWheel>", scroll_bag)
+            bag_y += bag_section_row_height
+            if section_name == "PoKéBlocks":
+                block_gains = get_pokeblock_gains(bag)
+                block_quantities = {
+                    block_type: bag.get(item_id, 0)
+                    for item_id, block_type in POKEBLOCK_ITEMS.items()
+                }
+                for block_type in POKEBLOCK_ITEMS.values():
+                    quantity = block_quantities[block_type]
+                    block_gain = block_gains.get(block_type.replace(".", ""), 0)
+                    sources = [
+                        berry_data[0]
+                        for berry_data in BERRY_ITEMS.values()
+                        if berry_data[2].replace(".", "")
+                        == block_type.replace(".", "")
+                    ]
                     tooltip_text = (
-                        f"{tooltip_text} ({create_text})"
-                        if tooltip_text
-                        else create_text
+                        f"(Made from {source_list_text(sources)} Berry)"
+                        if sources
+                        else None
                     )
-                add_bag_row(
-                    f"{berry} Berry",
-                    (
-                        f"{f'(+{projected_harvest})  ' if projected_harvest else ''}"
-                        f"x{quantity}"
-                    ),
-                    tooltip_text or None,
-                )
-                bag_row += 1
+                    add_bag_row(
+                        (
+                            "PoKéBlock"
+                            if (
+                                block_type in POKEMON_TYPES
+                                or block_type in POKEBLOCK_STAT_NAMES
+                            )
+                            else f"{block_type} PoKéBlock"
+                        ),
+                        f"{f'(+{block_gain})  ' if block_gain else ''}x{quantity}",
+                        tooltip_text,
+                        get_type_icon(block_type)
+                        if block_type in POKEMON_TYPES
+                        else get_stat_icon(block_type)
+                        if block_type in POKEBLOCK_STAT_NAMES
+                        else None,
+                    )
+                    bag_y += bag_item_row_height
+            else:
+                for item_id, berry_data in BERRY_ITEMS.items():
+                    berry, description, block_type, _ = berry_data
+                    quantity = bag.get(item_id, 0)
+                    projected_harvest = 0 if adventure_view else harvest.get(berry, 0)
+                    if quantity == 0 and projected_harvest == 0:
+                        continue
+                    tooltip_text = description
+                    if block_type != "—":
+                        normalized_block_type = block_type.replace(".", "")
+                        create_text = f"Creates {normalized_block_type} PoKéBlock"
+                        tooltip_text = (
+                            f"{tooltip_text} ({create_text})"
+                            if tooltip_text
+                            else create_text
+                        )
+                    add_bag_row(
+                        f"{berry} Berry",
+                        (
+                            f"{f'(+{projected_harvest})  ' if projected_harvest else ''}"
+                            f"x{quantity}"
+                        ),
+                        tooltip_text or None,
+                    )
+                    bag_y += bag_item_row_height
+
+        bag_contents.configure(height=bag_y + 24)
+
+    render_bag()
 
     quest_frame = tk.LabelFrame(
         root,
@@ -2024,6 +2164,7 @@ def show_berry_plots(
     }
     quest_canvas_width = 130
     quest_row_height = 18
+    type_master_row_height = 20
     mastery_row_height = 24
     filter_row_height = 16
     mastery_icons = {}
@@ -2048,6 +2189,11 @@ def show_berry_plots(
     quest_frame.grid_rowconfigure(3, weight=1)
 
     mastery_tooltips = {name: tooltip for _, name, tooltip in POKEMON_MASTERIES}
+    type_master_quest_names = {
+        name
+        for quest_id, name, _ in CHALLENGE_QUESTS
+        if 52 <= quest_id <= 69
+    }
 
     def get_mastery_icon(mastery_name):
         """Return the full-size Pokédex icon for a mastery's lead Pokémon."""
@@ -2157,19 +2303,38 @@ def show_berry_plots(
             y += quest_row_height
 
             for name, completed, tooltip_text in entries:
-                display_name = name
-                if quest_font.measure(display_name) > text_width:
+                is_mastery = name.endswith(" Mastery")
+                type_master_name = (
+                    name[:-len(" Master")]
+                    if name.endswith(" Master")
+                    and name[:-len(" Master")] in POKEMON_TYPES
+                    else None
+                )
+                display_name = " Master" if type_master_name else name
+                row_height = (
+                    type_master_row_height
+                    if name in type_master_quest_names
+                    else mastery_row_height
+                    if is_mastery
+                    else quest_row_height
+                )
+                name_x = 31
+                if type_master_name:
+                    quest_canvas.create_image(
+                        name_x,
+                        y + row_height // 2,
+                        image=get_type_icon(type_master_name),
+                        anchor="w",
+                        tags=("quest_row",),
+                    )
+                    name_x += TYPE_SPRITE_WIDTH
+                elif quest_font.measure(display_name) > text_width:
                     while (
                         display_name
                         and quest_font.measure(display_name + "...") > text_width
                     ):
                         display_name = display_name[:-1]
                     display_name = display_name.rstrip() + "..."
-
-                is_mastery = name.endswith(" Mastery")
-                row_height = (
-                    mastery_row_height if is_mastery else quest_row_height
-                )
 
                 if is_mastery:
                     mastery_name = name[:-len(" Mastery")]
@@ -2188,7 +2353,7 @@ def show_berry_plots(
                     tags=("quest_row",),
                 )
                 text_item = quest_canvas.create_text(
-                    31,
+                    name_x,
                     y + row_height // 2,
                     text=display_name,
                     anchor="w",
@@ -2334,7 +2499,7 @@ def show_berry_plots(
 
 
 def main():
-    """Print save info, quest, Pokédex, berry, and Pokéblock status."""
+    """Print save info, quest, Pokédex, berry, and PoKéBlock status."""
     if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
@@ -2379,6 +2544,7 @@ def main():
         names = POKEMON_NAMES
         plots = read_berry_plots(block)
         bag = decode_bag(block, encryption_key)
+        snapshot_bag = decode_snapshot_bag(storage)
         harvest = get_berry_harvest(plots)
         print_berry_and_pokeblock_info(bag, plots, harvest)
 
@@ -2429,6 +2595,7 @@ def main():
             bank_money,
             wallet_money,
             hub_name,
+            snapshot_bag,
         )
 
     except Exception as e:
