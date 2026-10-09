@@ -14,7 +14,7 @@ Description:
 import sys
 import struct
 import tkinter as tk
-from tkinter import font as tkfont
+from tkinter import font as tkfont, messagebox
 from tkinter import ttk
 from pathlib import Path
 
@@ -2503,16 +2503,26 @@ def main():
     if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
+    console_available = sys.stdin is not None and sys.stdout is not None
+
     if len(sys.argv) != 2:
-        print("Drag an Emerald Rogue .srm/.sav file onto this script.")
-        input("\nPress Enter to exit...")
+        message = "Drag an Emerald Rogue .srm/.sav file onto the application."
+        if console_available:
+            print(message)
+            input("\nPress Enter to exit...")
+        else:
+            messagebox.showinfo("Emerald Rogue Companion", message)
         return
 
     save_path = Path(sys.argv[1])
 
     if not save_path.is_file():
-        print(f"File not found: {save_path}")
-        input("\nPress Enter to exit...")
+        message = f"File not found: {save_path}"
+        if console_available:
+            print(message)
+            input("\nPress Enter to exit...")
+        else:
+            messagebox.showerror("Emerald Rogue Companion", message)
         return
 
     try:
@@ -2599,9 +2609,13 @@ def main():
         )
 
     except Exception as e:
-        print(f"\nERROR: {e}")
+        if console_available:
+            print(f"\nERROR: {e}")
+        else:
+            messagebox.showerror("Emerald Rogue Companion", str(e))
 
-    input("Press Enter to exit...")
+    if console_available:
+        input("Press Enter to exit...")
 
 
 if __name__ == "__main__":
